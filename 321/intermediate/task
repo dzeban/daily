@@ -51,10 +51,11 @@ Formal Inputs & Outputs
 Input will be words separated by spaces or newlines. Input will be in uppercase
 if need be (i.e. if you can't figure out a way to handle mixed cases), but if
 not, it will be provided in regular text (e.g. Lorum ipsum ... word). Expect
-only alphabetical characters. With reference to my previous equation, a will
+only alphabetical characters. With reference to my previous equation, `a` will
 only be a number coprime with 26.
 
-Hint: that is, a will be one of the following: 
+Hint: that is, `a` will be one of the following:
+
 3, 5, 7, 11, 15, 17, 19, 21, 23, or 25
 
 ### Output description
