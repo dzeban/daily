@@ -1,21 +1,31 @@
 package main
 
 import (
-	"fmt"
 	"bufio"
-	"os"
 	"flag"
+	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Coeff [2]int
 
 var wg sync.WaitGroup
 
+func timeTrack(start time.Time, name string) {
+	elapsed := time.Since(start)
+	log.Printf("%s took %s", name, elapsed)
+}
+
 func isAlpha(r rune) bool {
 	return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')
+}
+
+func isLowercase(r rune) bool {
+	return (r >= 'a' && r <= 'z')
 }
 
 func strip(s string) string {
@@ -26,17 +36,23 @@ func strip(s string) string {
 			stripped += string(r)
 		}
 	}
-
 	return stripped
 }
 
-func affineDecode(coeff Coeff, word string) string{
+func affineDecode(coeff Coeff, word string) string {
 	var decoded string
 	for _, c := range word {
 		d := int(c)
 		if isAlpha(c) {
-			d -= 'A'
-			d = (coeff[0]*d + coeff[1]) % 26 + int('A')
+			var baseChar rune
+			if isLowercase(c) {
+				baseChar = 'a'
+			} else {
+				baseChar = 'A'
+			}
+
+			d -= int(baseChar)
+			d = (coeff[0]*d+coeff[1])%26 + int(baseChar)
 		}
 		decoded += string(d)
 	}
@@ -45,38 +61,45 @@ func affineDecode(coeff Coeff, word string) string{
 }
 
 func crack(word string, dict map[string]bool, coeffs chan<- Coeff) {
+	// Find Affine Cipher coefficients by brute forcing `a` and `b`
+	// coefficients with dict lookup
 
 	// `a` coeffiecient in Affine Cipher
-	// can only be coprime with 26 
+	// can only be coprime with 26
 	coprimes := []int{3, 5, 7, 11, 15, 17, 19, 21, 23, 25}
 	for _, a := range coprimes {
+		// Because of mod 26 operation,
+		// `b` can only be 0..25
 		for b := 0; b < 26; b++ {
+			// We crack only stripped uppercase words
 			word = strip(strings.ToUpper(word))
+
+			// Try to decode current combination
+			// and match with dict
 			decoded := affineDecode(Coeff{a, b}, word)
 			_, present := dict[decoded]
 			if present == true {
-				// log.Println(word, decoded, d)
 				coeffs <- Coeff{a, b}
 			}
 		}
 	}
 
-	// log.Println("Releasing crack worker")
 	wg.Done()
 }
 
 func decrypt(input string, dict map[string]bool) []string {
+	defer timeTrack(time.Now(), "decrypt")
 	words := strings.Split(input, " ")
 
 	// Create buffered channel for workers
-	// to avoid deadlock because channel 
+	// to avoid deadlock because channel
 	// reading/writing is blocking like in the
 	// case when we try to read from channel,
 	// but nobody is writing to it.
 	// Buffer size is large enough to hold the case
 	// when every permutation of `a` and `b` coefficients
-	// matches.
-	coeffs := make(chan Coeff, len(words) * 26 * 26)
+	// is matching.
+	coeffs := make(chan Coeff, len(words)*26*26)
 	for _, word := range words {
 		wg.Add(1)
 		go crack(word, dict, coeffs)
@@ -93,6 +116,7 @@ func decrypt(input string, dict map[string]bool) []string {
 		table[v] += 1
 	}
 
+	// We have brute forced coefficients for every word.
 	// Find the most frequent matching coefficient
 	maxCoeffs := make([]Coeff, 1)
 	maxCount := 0
@@ -107,8 +131,9 @@ func decrypt(input string, dict map[string]bool) []string {
 			maxCount = v
 		}
 	}
-	// log.Println(maxCoeffs)
 
+	// Now we have affine cipher coefficients, so
+	// decrypt the original message
 	output := make([]string, 0)
 	for _, coeff := range maxCoeffs {
 		output = append(output, affineDecode(coeff, input))
@@ -134,11 +159,9 @@ func loadDict(path string) (map[string]bool, error) {
 	return dict, nil
 }
 
-
 func main() {
 	dictFilePath := flag.String("dict", "/usr/share/dict/words", "Path to dict file")
 	flag.Parse()
-	log.Printf("Decrypting using %s dict\n", *dictFilePath)
 
 	dict, err := loadDict(*dictFilePath)
 	if err != nil {
@@ -148,6 +171,9 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		s := scanner.Text()
-		fmt.Println(decrypt(s, dict))
+		for _, d := range decrypt(s, dict) {
+			fmt.Println(s)
+			fmt.Println(d)
+		}
 	}
 }
